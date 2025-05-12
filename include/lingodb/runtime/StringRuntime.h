@@ -1,6 +1,7 @@
 #ifndef LINGODB_RUNTIME_STRINGRUNTIME_H
 #define LINGODB_RUNTIME_STRINGRUNTIME_H
 #include "lingodb/runtime/helpers.h"
+#include <immintrin.h>
 namespace lingodb::runtime {
 struct StringRuntime {
    static bool compareEq(VarLen32 l, VarLen32 r);
@@ -21,6 +22,7 @@ struct StringRuntime {
    static VarLen32 fromDate(int64_t);
    static VarLen32 fromBool(bool);
    static VarLen32 fromInt(int64_t);
+   static VarLen32 fromBfloat(__bf16);
    static VarLen32 fromFloat32(float);
    static VarLen32 fromFloat64(double);
    static VarLen32 fromChar(uint64_t, size_t bytes);

@@ -359,6 +359,9 @@ mlir::Value frontend::sql::Parser::translateFuncCallExpression(Node* node, mlir:
       auto packed = builder.create<util::PackOp>(loc, values);
       return builder.create<db::Hash>(loc, builder.getIndexType(), packed);
    }
+   if (funcName == "random") {
+      return builder.create<db::RuntimeCall>(loc, builder.getF64Type(), "RandomFloat", mlir::ValueRange({})).getRes();
+   }
    throw std::runtime_error("could not translate func call");
    return mlir::Value();
 }
@@ -752,6 +755,53 @@ mlir::Value frontend::sql::Parser::translateFromClausePart(mlir::OpBuilder& buil
          }
          std::vector<std::string> colAlias = listToStringVec(stmt->alias_->colnames_);
          return translateSubSelect(builder, reinterpret_cast<SelectStmt*>(stmt->subquery_), alias, colAlias, context, scope);
+      }
+      case T_RangeFunction: {
+         // Parse the given statement structure and extract necessary values
+         auto* stmt = reinterpret_cast<RangeFunction*>(node);
+         auto* function = reinterpret_cast<List*>(stmt->functions->head->data.ptr_value);
+         auto* functionCall = reinterpret_cast<FuncCall*>(function->head->data.ptr_value);
+         std::string funcName = reinterpret_cast<value*>(functionCall->funcname_->head->data.ptr_value)->val_.str_;
+         // This part is necessary for renaming tables in FROM clause
+         std::string alias = funcName;
+         if (stmt->alias && stmt->alias->type_ == T_Alias && stmt->alias->aliasname_) {
+            alias = stmt->alias->aliasname_;
+         }
+
+         if (funcName == "generate_series") {
+            // Get lower and upper bound of the resulting value list (function parameters)
+            auto lowerBound = reinterpret_cast<A_Const*>(functionCall->args_->head->data.ptr_value)->val_;
+            auto upperBound = reinterpret_cast<A_Const*>(functionCall->args_->head->next->data.ptr_value)->val_;
+
+            // Look which step parameter should be used
+            int32_t step = 1;
+            if (functionCall->args_->length == 3) {
+               auto stepSize = reinterpret_cast<A_Const*>(functionCall->args_->tail->data.ptr_value)->val_;
+               step = stepSize.val_.ival_;
+            }
+            // Create rows for the table
+            std::vector<mlir::Attribute> rows;
+            for (int32_t value = lowerBound.val_.ival_; value <= upperBound.val_.ival_; value += step) {
+               mlir::ArrayAttr row = builder.getI32ArrayAttr(value);
+               rows.push_back(row);
+            }
+
+            std::string columnScope = attrManager.getUniqueScope("rangeFunction");
+            // Create a new column with fixed type (integer 32-Bit)
+            auto columnMetaData = std::make_shared<lingodb::runtime::ColumnMetaData>();
+            columnMetaData->setColumnType(createColumnType("int4", false, std::vector<std::variant<size_t, std::string>>()));
+            // Create a new temporary table (single column)
+            auto tableMetaData = std::make_shared<lingodb::runtime::TableMetaData>();
+            tableMetaData->addColumn(funcName, columnMetaData);
+            auto attrDef = attrManager.createDef(columnScope, tableMetaData->getOrderedColumns()[0]);
+            attrDef.getColumn().type = createTypeFromColumnType(builder.getContext(), tableMetaData->getColumnMetaData(funcName)->getColumnType());
+            std::vector<mlir::Attribute> columns{attrDef};
+            // Important: Defines how to access the values of the table
+            context.mapAttribute(scope, funcName, &attrDef.getColumn());
+            context.mapAttribute(scope, alias + "." + funcName, &attrDef.getColumn());
+            return builder.create<relalg::ConstRelationOp>(builder.getUnknownLoc(), builder.getArrayAttr(columns), builder.getArrayAttr(rows));
+         }
+
       }
 
       case T_JoinExpr: {
@@ -1372,6 +1422,10 @@ lingodb::runtime::ColumnType frontend::sql::Parser::createColumnType(std::string
    if (datatypeName == "int8") {
       datatypeName = "int";
       typeModifiers.push_back(64ull);
+   }
+   if (datatypeName == "bfloat"){
+      datatypeName = "bfloat";
+      typeModifiers.push_back(16ull);
    }
    if (datatypeName == "float4") {
       datatypeName = "float";
@@ -2521,6 +2575,7 @@ mlir::Type frontend::sql::Parser::createBaseTypeFromColumnType(mlir::MLIRContext
    if (colType.base == "bool") return mlir::IntegerType::get(context, 1);
    if (colType.base == "int") return mlir::IntegerType::get(context, asInt(colType.modifiers.at(0)));
    if (colType.base == "index") return mlir::IndexType::get(context);
+   if (colType.base == "bfloat") return mlir::BFloat16Type::get(context);
    if (colType.base == "float") return asInt(colType.modifiers.at(0)) == 32 ? (mlir::Type)mlir::Float32Type::get(context) : (mlir::Type)mlir::Float64Type::get(context);
    if (colType.base == "date") return db::DateType::get(context, db::symbolizeDateUnitAttr(std::get<std::string>(colType.modifiers.at(0))).value());
    if (colType.base == "string") return db::StringType::get(context);

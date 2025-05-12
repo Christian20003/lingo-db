@@ -160,6 +160,11 @@ CAST_NUMERIC_TO_STRING(float, arrow::FloatType, Float32)
 CAST_NUMERIC_TO_STRING(double, arrow::DoubleType, Float64)
 CAST_NUMERIC_TO_STRING(bool, arrow::BooleanType, Bool)
 
+lingodb::runtime::VarLen32 lingodb::runtime::StringRuntime::fromBfloat(__bf16 value) { // NOLINT (clang-diagnostic-return-type-c-linkage)
+   std::string str = std::to_string((float) value);
+   return lingodb::runtime::VarLen32::fromString(str);
+}
+
 lingodb::runtime::VarLen32 lingodb::runtime::StringRuntime::fromDecimal(__int128 val, int32_t scale) { // NOLINT (clang-diagnostic-return-type-c-linkage)
 
    arrow::Decimal128 decimalrep(arrow::BasicDecimal128(val >> 64, val));

@@ -26,3 +26,6 @@ double lingodb::runtime::FloatRuntime::erf(double x) {
 double lingodb::runtime::FloatRuntime::pow(double x,double y) {
    return ::pow(x,y);
 }
+double lingodb::runtime::FloatRuntime::random() {
+   return ((double) rand() / (double) RAND_MAX);
+}

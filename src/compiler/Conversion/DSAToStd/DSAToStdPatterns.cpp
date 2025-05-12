@@ -90,6 +90,8 @@ class CBAppendLowering : public OpConversionPattern<dsa::Append> {
             case 64: ArrowColumnBuilder::addInt64(rewriter, loc)({builderVal, isValid, val}); break;
             default: assert(false && "should not happen");
          }
+      } else if (auto bfloatType = mlir::dyn_cast_or_null<mlir::BFloat16Type>(arrowType)){
+         ArrowColumnBuilder::addBfloat(rewriter, loc)({builderVal, isValid, val});
       } else if (auto floatType = mlir::dyn_cast_or_null<mlir::FloatType>(arrowType)) {
          switch (floatType.getWidth()) {
             case 32: ArrowColumnBuilder::addFloat32(rewriter, loc)({builderVal, isValid, val}); break;

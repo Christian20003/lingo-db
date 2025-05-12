@@ -11,6 +11,7 @@ struct FloatRuntime {
    static double log(double);
    static double erf(double);
    static double pow(double, double);
+   static double random();
 };
 
 } // namespace lingodb::runtime
