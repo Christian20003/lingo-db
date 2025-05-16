@@ -1,4 +1,4 @@
-set(EXECUTION_FILES ResultProcessor.cpp EnforceCABIPass.cpp Frontend.cpp LLVMBackends.cpp Execution.cpp BackendPasses.cpp CEmitter.cpp CBackend.cpp BareFunctions.cpp Instrumentation.cpp)
+set(EXECUTION_FILES PrettyPrintExtension.cpp ResultProcessor.cpp EnforceCABIPass.cpp Frontend.cpp LLVMBackends.cpp Execution.cpp BackendPasses.cpp CEmitter.cpp CBackend.cpp BareFunctions.cpp Instrumentation.cpp)
 
 if (ENABLE_GPU_BACKEND)
     find_library(CUDA_RUNTIME_LIBRARY cuda HINTS ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES} REQUIRED)
