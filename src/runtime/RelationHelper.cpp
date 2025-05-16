@@ -28,7 +28,7 @@ void RelationHelper::appendTableFromResult(lingodb::runtime::VarLen32 tableName,
       }
    }
 }
-void RelationHelper::copyFromIntoTable(lingodb::runtime::ExecutionContext* context, lingodb::runtime::VarLen32 tableName, lingodb::runtime::VarLen32 fileName, lingodb::runtime::VarLen32 delimiter, lingodb::runtime::VarLen32 escape) {
+void RelationHelper::copyFromIntoTable(lingodb::runtime::ExecutionContext* context, lingodb::runtime::VarLen32 tableName, lingodb::runtime::VarLen32 fileName, lingodb::runtime::VarLen32 delimiter, lingodb::runtime::VarLen32 escape, bool header) {
    auto& session = context->getSession();
    auto catalog = session.getCatalog();
    if (auto relation = catalog->findRelation(tableName)) {
@@ -43,6 +43,9 @@ void RelationHelper::copyFromIntoTable(lingodb::runtime::ExecutionContext* conte
       if (escape.getLen() > 0) {
          parseOptions.escape_char = escape.str().front();
          parseOptions.escaping = true;
+      }
+      if (header) {
+         readOptions.skip_rows = 1;
       }
       parseOptions.newlines_in_values = true;
       auto convertOptions = arrow::csv::ConvertOptions::Defaults();
