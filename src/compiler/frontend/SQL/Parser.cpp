@@ -567,19 +567,108 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
          {
             auto subQueryScope = context.createResolverScope();
             auto subQueryDefineScope = context.createDefineScope();
-            auto [subQuery_, targetInfo_] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(cte->ctequery_), context, subQueryScope);
-            subQuery = subQuery_;
-            targetInfo = targetInfo_;
+            auto* substmt = reinterpret_cast<SelectStmt*>(cte->ctequery_);
+            if (substmt->op_ == SETOP_UNION && stmt->with_clause_->recursive_) {
+               auto [subQuery_, targetInfo_] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(substmt->larg_), context, subQueryScope);
+               subQuery = subQuery_;
+               targetInfo = targetInfo_;
+            } else {
+               auto [subQuery_, targetInfo_] = translateSelectStmt(builder, substmt, context, subQueryScope);
+               subQuery = subQuery_;
+               targetInfo = targetInfo_;
+            }
+
             if (cte->aliascolnames_) {
                size_t i = 0;
-               std::cout << pg_query_nodes_to_json(cte->aliascolnames_) << std::endl;
+               //std::cout << pg_query_nodes_to_json(cte->aliascolnames_) << std::endl;
                for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
                   auto* val = reinterpret_cast<value*>(el->data.ptr_value);
                   targetInfo.namedResults.at(i++).first = val->val_.str_;
                }
             }
+            ctes.insert({cte->ctename_, {subQuery, targetInfo}});
+
+            if (substmt->op_ == SETOP_UNION && stmt->with_clause_->recursive_) {
+               auto scopeName = attrManager.getUniqueScope("recursive_cte");
+               //for (int j = 0; j < 10; ++j) {
+                  std::vector<mlir::Attribute> attributes;
+                  TargetInfo tmpResult;
+                  auto [subQuery_, targetInfo_] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(substmt->rarg_), context, subQueryScope);
+                  //subQuery = subQuery_;
+                  //targetInfo = targetInfo_;
+                  if (cte->aliascolnames_) {
+                     size_t i = 0;
+                     for (auto* el = cte->aliascolnames_->head; el != nullptr; el = el->next) {
+                        auto* val = reinterpret_cast<value*>(el->data.ptr_value);
+                        targetInfo_.namedResults.at(i++).first = val->val_.str_;
+                     }
+                  }
+                  for (size_t i = 0; i < targetInfo.namedResults.size(); i++) {      
+                     auto newName = targetInfo.namedResults[i].first;
+                     const auto* leftColumn = targetInfo.namedResults[i].second;
+                     const auto* rightColumn = targetInfo_.namedResults[i].second;
+                     auto leftType = leftColumn->type;
+                     auto rightType = rightColumn->type;
+                     auto newType = SQLTypeInference::getCommonType(leftType, rightType);
+                     auto newColName = attrManager.getName(leftColumn).second;
+                     auto newColDef = attrManager.createDef(scopeName, newColName, builder.getArrayAttr({attrManager.createRef(leftColumn), attrManager.createRef(rightColumn)}));
+                     auto* newCol = &newColDef.getColumn();
+                     newCol->type = newType;
+                     attributes.push_back(newColDef);
+                     tmpResult.map(newName, newCol);
+                  }
+                  targetInfo = tmpResult;
+                  //auto union = builder.create<relalg::UnionOp>(builder.getUnknownLoc(), ::relalg::SetSemanticAttr::get(builder.getContext(), relalg::SetSemantic::distinct), subQuery, subQuery_, builder.getArrayAttr(attributes));
+                  //auto recursiveCTE = builder.create<relalg::RecursiveCTEOP>(builder.getUnknownLoc(), tuples::TupleStreamType::get(builder.getContext()), subQuery, builder.getArrayAttr(attributes));
+                  
+                  auto type = tuples::TupleStreamType::get(builder.getContext());
+                  auto whileOp = builder.create<mlir::scf::WhileOp>(builder.getUnknownLoc(), mlir::TypeRange({type, type}), mlir::ValueRange({subQuery, subQuery_}));
+                  auto* conditionBlock = new mlir::Block;
+                  auto* loopBlock = new mlir::Block;
+                  auto resultCon = conditionBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
+                  auto iterationCon = conditionBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
+                  auto resultLo = loopBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
+                  auto iterationLo = loopBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
+
+                  mlir::OpBuilder afterBuilder(builder.getContext());
+                  afterBuilder.setInsertionPointToStart(conditionBlock);
+                  mlir::Value unionExpr = afterBuilder.create<relalg::UnionOp>(
+                      afterBuilder.getUnknownLoc(),
+                      ::relalg::SetSemanticAttr::get(afterBuilder.getContext(), relalg::SetSemantic::distinct),
+                      resultCon,
+                      iterationCon,
+                      builder.getArrayAttr(attributes)
+                  );
+                  auto exceptResult = afterBuilder.create<relalg::ExceptOp>(
+                      afterBuilder.getUnknownLoc(),
+                      ::relalg::SetSemanticAttr::get(afterBuilder.getContext(), relalg::SetSemantic::distinct),
+                      resultCon,
+                      unionExpr,
+                      builder.getArrayAttr(attributes)
+                  );
+                  auto exists = afterBuilder.create<relalg::ExistsOp>(
+                      afterBuilder.getUnknownLoc(),
+                      builder.getI1Type(),
+                      exceptResult
+                  );
+                  afterBuilder.create<mlir::scf::ConditionOp>(
+                      afterBuilder.getUnknownLoc(),
+                      exists,
+                      mlir::ValueRange({unionExpr, iterationCon})
+                  );
+
+                  mlir::OpBuilder beforeBuilder(builder.getContext());
+                  beforeBuilder.setInsertionPointToStart(loopBlock);
+                  beforeBuilder.create<mlir::scf::YieldOp>(
+                      beforeBuilder.getUnknownLoc(),
+                      mlir::ValueRange({resultLo, iterationLo})
+                  );
+                  whileOp.getBefore().push_back(conditionBlock);
+                  whileOp.getAfter().push_back(loopBlock);
+                  ctes[cte->ctename_] = {whileOp.getResult(0), targetInfo};
+               //}
+            }
          }
-         ctes.insert({cte->ctename_, {subQuery, targetInfo}});
       }
    }
    // FROM

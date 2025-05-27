@@ -251,6 +251,37 @@ class MapLowering : public OpConversionPattern<relalg::MapOp> {
       return success();
    }
 };
+class RecursiveCTELowering : public OpConversionPattern<relalg::RecursiveCTEOP> {
+   public:
+   using OpConversionPattern<relalg::RecursiveCTEOP>::OpConversionPattern;
+
+   LogicalResult matchAndRewrite(relalg::RecursiveCTEOP cteOp, OpAdaptor adaptor, ConversionPatternRewriter& rewriter) const override {
+      auto loc = cteOp->getLoc();
+      auto resultType = tuples::TupleStreamType::get(rewriter.getContext());
+      //auto* conditionBlock = cteOp.getCondition().front().getTerminator()->getBlock();
+      auto* loopBlock = cteOp.getLoop().front().getTerminator()->getBlock();
+
+      mlir::Value start = rewriter.create<db::ConstantOp>(rewriter.getUnknownLoc(), rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+      mlir::Value stop = rewriter.create<db::ConstantOp>(rewriter.getUnknownLoc(), rewriter.getI32Type(), rewriter.getI32IntegerAttr(15));
+      mlir::Value condition = rewriter.create<db::CmpOp>(rewriter.getUnknownLoc(), db::DBCmpPredicate::lt, start, stop);
+
+      auto whileOp = rewriter.create<mlir::scf::WhileOp>(loc, resultType, cteOp.getBody());
+      
+      auto* conditionBlock = new mlir::Block;
+      whileOp.getBefore().push_back(conditionBlock);
+      whileOp.getAfter().push_back(loopBlock);
+
+      mlir::Value afterArg = conditionBlock->addArgument(mlir::IntegerType::get(rewriter.getContext(), 1), rewriter.getUnknownLoc());
+      mlir::OpBuilder afterBuilder(rewriter.getContext());
+      afterBuilder.setInsertionPointToStart(conditionBlock);
+      afterBuilder.create<mlir::scf::ConditionOp>(afterBuilder.getUnknownLoc(), condition, afterArg);  
+
+      // Ersetze den ursprünglichen cteOp durch den neuen LoopOp
+      rewriter.replaceOp(cteOp, whileOp);
+
+      return success();
+   }
+};
 class RenamingLowering : public OpConversionPattern<relalg::RenamingOp> {
    public:
    using OpConversionPattern<relalg::RenamingOp>::OpConversionPattern;
