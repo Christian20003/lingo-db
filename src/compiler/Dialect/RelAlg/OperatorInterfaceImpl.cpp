@@ -18,6 +18,8 @@ operator_list getChildOperators(mlir::Operation* parent) {
    for (auto operand : parent->getOperands()) {
       if (auto childOperator = mlir::dyn_cast_or_null<Operator>(operand.getDefiningOp())) {
          children.push_back(childOperator);
+      } else {
+         int i = 0;
       }
    }
    return children;

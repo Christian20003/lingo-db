@@ -591,8 +591,6 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
             if (substmt->op_ == SETOP_UNION && stmt->with_clause_->recursive_) {
                auto scopeName = attrManager.getUniqueScope("recursive_cte");
                //for (int j = 0; j < 10; ++j) {
-                  std::vector<mlir::Attribute> attributes;
-                  TargetInfo tmpResult;
                   auto [subQuery_, targetInfo_] = translateSelectStmt(builder, reinterpret_cast<SelectStmt*>(substmt->rarg_), context, subQueryScope);
                   //subQuery = subQuery_;
                   //targetInfo = targetInfo_;
@@ -603,6 +601,9 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                         targetInfo_.namedResults.at(i++).first = val->val_.str_;
                      }
                   }
+                  TargetInfo tmpResult;
+                  std::vector<mlir::Attribute> attributesUnion;
+                  std::vector<mlir::Attribute> attributesExcept;
                   for (size_t i = 0; i < targetInfo.namedResults.size(); i++) {      
                      auto newName = targetInfo.namedResults[i].first;
                      const auto* leftColumn = targetInfo.namedResults[i].second;
@@ -610,41 +611,56 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                      auto leftType = leftColumn->type;
                      auto rightType = rightColumn->type;
                      auto newType = SQLTypeInference::getCommonType(leftType, rightType);
-                     auto newColName = attrManager.getName(leftColumn).second;
-                     auto newColDef = attrManager.createDef(scopeName, newColName, builder.getArrayAttr({attrManager.createRef(leftColumn), attrManager.createRef(rightColumn)}));
-                     auto* newCol = &newColDef.getColumn();
-                     newCol->type = newType;
-                     attributes.push_back(newColDef);
-                     tmpResult.map(newName, newCol);
+                     auto colNameUnion = attrManager.getName(leftColumn).second + "_union";
+                     auto colNameExcept = attrManager.getName(leftColumn).second + "_except";
+                     auto colDefUnion = attrManager.createDef(scopeName, colNameUnion, builder.getArrayAttr({attrManager.createRef(leftColumn), attrManager.createRef(rightColumn)}));
+                     auto* colUnion = &colDefUnion.getColumn();
+                     colUnion->type = newType;
+                     auto colDefExcept = attrManager.createDef(scopeName, colNameExcept, builder.getArrayAttr({attrManager.createRef(colUnion), attrManager.createRef(rightColumn)}));
+                     auto* colExcept = &colDefExcept.getColumn();
+                     colExcept->type = newType;
+
+                     attributesUnion.push_back(colDefUnion);
+                     attributesExcept.push_back(colDefExcept);
+                     tmpResult.map(newName, colUnion);
+                     tmpResult.map(newName, colExcept);
                   }
                   targetInfo = tmpResult;
                   //auto union = builder.create<relalg::UnionOp>(builder.getUnknownLoc(), ::relalg::SetSemanticAttr::get(builder.getContext(), relalg::SetSemantic::distinct), subQuery, subQuery_, builder.getArrayAttr(attributes));
                   //auto recursiveCTE = builder.create<relalg::RecursiveCTEOP>(builder.getUnknownLoc(), tuples::TupleStreamType::get(builder.getContext()), subQuery, builder.getArrayAttr(attributes));
                   
                   auto type = tuples::TupleStreamType::get(builder.getContext());
-                  auto whileOp = builder.create<mlir::scf::WhileOp>(builder.getUnknownLoc(), mlir::TypeRange({type, type}), mlir::ValueRange({subQuery, subQuery_}));
+                  auto loc = builder.getUnknownLoc();
+
+                  auto *mapBlock = new mlir::Block;
+                  mlir::OpBuilder mapBuilder(builder.getContext());
+                  auto left = mapBlock->addArgument(type, loc);
+                  auto right = mapBlock->addArgument(type, loc);
+                  mapBuilder.setInsertionPointToStart(mapBlock);
+
+                  auto whileOp = mapBuilder.create<mlir::scf::WhileOp>(builder.getUnknownLoc(), mlir::TypeRange({type, type}), mlir::ValueRange({left, right}));
                   auto* conditionBlock = new mlir::Block;
                   auto* loopBlock = new mlir::Block;
-                  auto resultCon = conditionBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
-                  auto iterationCon = conditionBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
-                  auto resultLo = loopBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
-                  auto iterationLo = loopBlock->addArgument(tuples::TupleStreamType::get(builder.getContext()), builder.getUnknownLoc());
+                  auto resultTable_1 = conditionBlock->addArgument(type, loc);
+                  auto iterationTable_1 = conditionBlock->addArgument(type, loc);
+                  auto resultTable_2 = loopBlock->addArgument(type, loc);
+                  auto iterationTable_2 = loopBlock->addArgument(type, loc);
 
                   mlir::OpBuilder afterBuilder(builder.getContext());
                   afterBuilder.setInsertionPointToStart(conditionBlock);
-                  mlir::Value unionExpr = afterBuilder.create<relalg::UnionOp>(
+                  auto unionExpr = afterBuilder.create<relalg::UnionOp>(
                       afterBuilder.getUnknownLoc(),
                       ::relalg::SetSemanticAttr::get(afterBuilder.getContext(), relalg::SetSemantic::distinct),
-                      resultCon,
-                      iterationCon,
-                      builder.getArrayAttr(attributes)
+                      resultTable_1,
+                      iterationTable_1,
+                      builder.getArrayAttr(attributesUnion)
                   );
                   auto exceptResult = afterBuilder.create<relalg::ExceptOp>(
                       afterBuilder.getUnknownLoc(),
                       ::relalg::SetSemanticAttr::get(afterBuilder.getContext(), relalg::SetSemantic::distinct),
-                      resultCon,
+                      resultTable_1,
                       unionExpr,
-                      builder.getArrayAttr(attributes)
+                      builder.getArrayAttr(attributesExcept)
                   );
                   auto exists = afterBuilder.create<relalg::ExistsOp>(
                       afterBuilder.getUnknownLoc(),
@@ -654,18 +670,36 @@ std::pair<mlir::Value, frontend::sql::Parser::TargetInfo> frontend::sql::Parser:
                   afterBuilder.create<mlir::scf::ConditionOp>(
                       afterBuilder.getUnknownLoc(),
                       exists,
-                      mlir::ValueRange({unionExpr, iterationCon})
+                      mlir::ValueRange({unionExpr, iterationTable_1})
                   );
 
                   mlir::OpBuilder beforeBuilder(builder.getContext());
                   beforeBuilder.setInsertionPointToStart(loopBlock);
                   beforeBuilder.create<mlir::scf::YieldOp>(
                       beforeBuilder.getUnknownLoc(),
-                      mlir::ValueRange({resultLo, iterationLo})
+                      mlir::ValueRange({resultTable_2, iterationTable_2})
                   );
                   whileOp.getBefore().push_back(conditionBlock);
                   whileOp.getAfter().push_back(loopBlock);
-                  ctes[cte->ctename_] = {whileOp.getResult(0), targetInfo};
+
+                  std::vector<mlir::Value> mapResults;
+                  for (auto attr : attributesUnion) {
+                     auto colRef = mlir::cast<tuples::ColumnDefAttr>(attr);
+                     auto ref = attrManager.createRef(&colRef.getColumn());
+                     mapResults.push_back(mapBuilder.create<tuples::GetColumnOp>(
+                         builder.getUnknownLoc(), colRef.getColumn().type, ref, mapBlock->getArgument(0)));
+                  }
+                  mapBuilder.create<tuples::ReturnOp>(builder.getUnknownLoc(), mapResults);
+
+                  auto mapOp = builder.create<relalg::MapOp>(
+                      loc,
+                      type, 
+                      mlir::ValueRange({subQuery, subQuery_}),
+                      builder.getArrayAttr(attributesUnion));
+
+                  mapOp.getPredicate().push_back(mapBlock);
+
+                  ctes[cte->ctename_] = {mapOp, targetInfo};
                //}
             }
          }

@@ -155,9 +155,9 @@ def SelectionOp : RelAlg_Op<"selection",
 def RecursiveCTEOP : RelAlg_Op<"recursive_cte", [Pure, Operator]> {
     let summary = "recursive cte operation";
 
-    let arguments = (ins TupleStream:$union, ArrayAttr:$cols_union, TupleStream:$iteration, ArrayAttr:$cols_iteration);
+    let arguments = (ins TupleStream:$unions, ArrayAttr:$cols_union, TupleStream:$iteration, ArrayAttr:$cols_iteration);
     let results = (outs TupleStream:$result);
-    let assemblyFormat = [{ $union custom<CustDefArr>($cols_union), $iteration custom<CustDefArr>($cols_iteration) attr-dict-with-keyword }];
+    let assemblyFormat = [{ $unions custom<CustDefArr>($cols_union) $iteration custom<CustDefArr>($cols_iteration) attr-dict-with-keyword }];
 }
 
 def MapOp : RelAlg_Op<"map", [Pure,Operator,TupleLamdaOperator,UnaryOperator,DeclareOpInterfaceMethods<ColumnFoldable>]> {
