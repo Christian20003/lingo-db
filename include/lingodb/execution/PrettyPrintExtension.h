@@ -1,5 +1,6 @@
 #include <arrow/array.h>
 #include <arrow/visit_array_inline.h>
+#include <arrow/pretty_print.h>
 
 /**
  * This file contains content to extend the Apache Arrow library's pretty-printing capabilities.
@@ -13,9 +14,10 @@ namespace lingodb::execution {
 class ExtensionPrinter : public arrow::ArrayVisitor {
     private:
     std::ostream* sink;
+    arrow::PrettyPrintOptions options;
 
     public:
-    arrow::Status PrettyPrint(const arrow::ChunkedArray& chunked_arr, std::ostream* sink);
+    arrow::Status PrettyPrint(const arrow::ChunkedArray& chunked_arr, arrow::PrettyPrintOptions options, std::ostream* sink);
 
     arrow::Status Visit(const arrow::HalfFloatArray& array) override;
 

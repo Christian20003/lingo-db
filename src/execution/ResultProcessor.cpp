@@ -44,8 +44,7 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
    std::vector<size_t> positions;
    arrow::PrettyPrintOptions options;
    options.indent_size = 0;
-   options.window = 100000000;
-   options.container_window = 100000000;
+   options.window = 100;
    std::cout << "|";
    std::string rowSep = "-";
    std::vector<bool> convertHex;
@@ -58,7 +57,7 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
          arrow::PrettyPrint(*c.get(), options, &sstr); //NOLINT (clang-diagnostic-unused-result)
       } else {
          lingodb::execution::ExtensionPrinter printer;
-         printer.PrettyPrint(*c.get(), &sstr);
+         printer.PrettyPrint(*c.get(), options, &sstr);
       }
       columnReps.push_back(sstr.str());
       positions.push_back(0);
