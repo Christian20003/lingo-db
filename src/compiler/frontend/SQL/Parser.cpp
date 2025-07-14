@@ -1393,6 +1393,9 @@ lingodb::catalog::Type frontend::sql::Parser::createType(std::string datatypeNam
    if (datatypeName == "int") {
       return lingodb::catalog::Type::int32();
    }
+   if (datatypeName == "bfloat") {
+      return lingodb::catalog::Type::bf();
+   }
    if (datatypeName == "float4") {
       return lingodb::catalog::Type::f32();
    }

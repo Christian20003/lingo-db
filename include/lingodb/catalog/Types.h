@@ -24,6 +24,7 @@ enum class LogicalTypeId : uint8_t {
    INTERVAL = 9,
    CHAR = 10,
    STRING = 11,
+   BFLOAT = 12,
 };
 class TypeInfo {
    protected:
@@ -67,6 +68,7 @@ class Type {
    static Type int16() { return makeIntType(16, true); }
    static Type int32() { return makeIntType(32, true); }
    static Type int64() { return makeIntType(64, true); }
+   static Type bf() { return Type(LogicalTypeId::BFLOAT, nullptr); }
    static Type f32() { return Type(LogicalTypeId::FLOAT, nullptr); }
    static Type f64() { return Type(LogicalTypeId::DOUBLE, nullptr); }
    static Type decimal(size_t precision, size_t scale);

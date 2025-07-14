@@ -189,6 +189,13 @@ __int128 lingodb::runtime::StringRuntime::toDecimal(lingodb::runtime::VarLen32 s
    res |= decimalrep.low_bits();
    return res;
 }
+
+__bf16 lingodb::runtime::StringRuntime::toBfloat(lingodb::runtime::VarLen32 str) { // NOLINT (clang-diagnostic-return-type-c-linkage)
+   std::string string = str.str();
+   float value = std::stof(string);
+   return static_cast<__bf16>(value);
+}
+
 #define CAST_NUMERIC_TO_STRING(IN_TYPE, ARROW_TYPE, TYPE_NAME)                                                                                       \
    lingodb::runtime::VarLen32 lingodb::runtime::StringRuntime::from##TYPE_NAME(IN_TYPE value) { /* NOLINT (clang-diagnostic-return-type-c-linkage)*/ \
       arrow::internal::StringFormatter<ARROW_TYPE> formatter;                                                                                        \
@@ -229,6 +236,11 @@ lingodb::runtime::VarLen32 lingodb::runtime::StringRuntime::fromChar(uint32_t va
       len = 4;
    }
    return lingodb::runtime::VarLen32(reinterpret_cast<uint8_t*>(data), len);
+}
+
+lingodb::runtime::VarLen32 lingodb::runtime::StringRuntime::fromBfloat(__bf16 value) { // NOLINT (clang-diagnostic-return-type-c-linkage)
+   std::string str = std::to_string((float) value);
+   return lingodb::runtime::VarLen32::fromString(str);
 }
 
 #define STR_CMP(NAME, OP)                                                                                                  \

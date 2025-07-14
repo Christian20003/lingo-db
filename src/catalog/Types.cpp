@@ -15,6 +15,9 @@ Type::Type(lingodb::catalog::LogicalTypeId id, std::shared_ptr<TypeInfo> infoInp
       case LogicalTypeId::INT:
          mlirTypeCreator = lingodb::catalog::createIntTypeCreator(std::dynamic_pointer_cast<IntTypeInfo>(info));
          break;
+      case LogicalTypeId::BFLOAT:
+         mlirTypeCreator = lingodb::catalog::createBFloatTypeCreator();
+         break;
       case LogicalTypeId::FLOAT:
          mlirTypeCreator = lingodb::catalog::createFloatTypeCreator();
          break;

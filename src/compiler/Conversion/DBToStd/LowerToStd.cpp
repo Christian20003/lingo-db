@@ -89,7 +89,7 @@ class LoadArrowOpLowering : public OpConversionPattern<db::LoadArrowOp> {
       //todo: add logic for other types (temporarily: also for some basic types, but especially high-level types defined by DB dialect)
       if (baseType.isInteger(1)) {
          loaded = rewriter.create<lingodb::compiler::dialect::arrow::LoadBoolOp>(loc, baseType, array, offset);
-      } else if (baseType.isInteger() || baseType.isF32() || baseType.isF64()) {
+      } else if (baseType.isInteger() || baseType.isBF16() || baseType.isF32() || baseType.isF64()) {
          loaded = rewriter.create<lingodb::compiler::dialect::arrow::LoadFixedSizedOp>(loc, baseType, array, offset);
       } else if (auto decimalType = mlir::dyn_cast_or_null<db::DecimalType>(baseType)) {
          loaded = rewriter.create<lingodb::compiler::dialect::arrow::LoadFixedSizedOp>(loc, IntegerType::get(rewriter.getContext(), 128), array, offset);
@@ -168,7 +168,7 @@ class AppendArrowLowering : public OpConversionPattern<db::AppendArrowOp> {
          rewriter.create<lingodb::compiler::dialect::arrow::AppendFixedSizedOp>(loc, builder, value, valid); //todo: necessary?
       } else if (baseType.isInteger(1)) {
          rewriter.create<lingodb::compiler::dialect::arrow::AppendBoolOp>(loc, builder, value, valid);
-      } else if (baseType.isInteger() || baseType.isF32() || baseType.isF64()) {
+      } else if (baseType.isInteger() || baseType.isBF16() || baseType.isF32() || baseType.isF64()) {
          rewriter.create<lingodb::compiler::dialect::arrow::AppendFixedSizedOp>(loc, builder, value, valid);
       } else if (auto decimalType = mlir::dyn_cast_or_null<db::DecimalType>(baseType)) {
          if (convertedBaseType.getIntOrFloatBitWidth() != 128) {
@@ -232,6 +232,8 @@ class StringCastOpLowering : public OpConversionPattern<db::CastOp> {
             if (intWidth < 64) {
                result = rewriter.create<arith::TruncIOp>(loc, convertedTargetType, result);
             }
+         } else if (auto bfloatType = mlir::dyn_cast_or_null<BFloat16Type>(scalarTargetType)) {
+            result = StringRuntime::toBfloat(rewriter, loc)({valueToCast})[0];
          } else if (auto floatType = mlir::dyn_cast_or_null<FloatType>(scalarTargetType)) {
             result = floatType.getWidth() == 32 ? StringRuntime::toFloat32(rewriter, loc)({valueToCast})[0] : StringRuntime::toFloat64(rewriter, loc)({valueToCast})[0];
          } else if (auto decimalType = mlir::dyn_cast_or_null<db::DecimalType>(scalarTargetType)) {
@@ -259,6 +261,8 @@ class StringCastOpLowering : public OpConversionPattern<db::CastOp> {
          result = StringRuntime::fromBool(rewriter, loc)({valueToCast})[0];
       } else if (getIntegerWidth(scalarSourceType, false)) {
          result = StringRuntime::fromInt(rewriter, loc)({valueToCast})[0];
+      } else if (auto bfloatType = mlir::dyn_cast_or_null<BFloat16Type>(scalarSourceType)) {
+         result = StringRuntime::fromBfloat(rewriter, loc)({valueToCast})[0];
       } else if (auto floatType = mlir::dyn_cast_or_null<FloatType>(scalarSourceType)) {
          result = floatType.getWidth() == 32 ? StringRuntime::fromFloat32(rewriter, loc)({valueToCast})[0] : StringRuntime::fromFloat64(rewriter, loc)({valueToCast})[0];
       } else if (auto decimalSourceType = mlir::dyn_cast_or_null<db::DecimalType>(scalarSourceType)) {
@@ -843,7 +847,7 @@ class CastOpLowering : public OpConversionPattern<db::CastOp> {
          return success();
       }
       if (auto sourceIntWidth = getIntegerWidth(scalarSourceType, false)) {
-         if (mlir::isa<FloatType>(scalarTargetType)) {
+         if (mlir::isa<FloatType>(scalarTargetType) || mlir::isa<BFloat16Type>(scalarTargetType)) {
             value = rewriter.create<arith::SIToFPOp>(loc, convertedTargetType, value);
             rewriter.replaceOp(op, value);
             return success();
@@ -862,7 +866,7 @@ class CastOpLowering : public OpConversionPattern<db::CastOp> {
             }
             return success();
          }
-      } else if (auto floatType = mlir::dyn_cast_or_null<FloatType>(scalarSourceType)) {
+      } else if (auto floatType = mlir::dyn_cast_or_null<FloatType>(scalarSourceType) || mlir::dyn_cast_or_null<BFloat16Type>(scalarSourceType)) {
          if (getIntegerWidth(scalarTargetType, false)) {
             value = rewriter.replaceOpWithNewOp<arith::FPToSIOp>(op, convertedTargetType, value);
             return success();
@@ -870,6 +874,13 @@ class CastOpLowering : public OpConversionPattern<db::CastOp> {
             auto multiplier = rewriter.create<arith::ConstantOp>(loc, convertedSourceType, FloatAttr::get(convertedSourceType, powf(10, decimalTargetType.getS())));
             value = rewriter.create<arith::MulFOp>(loc, convertedSourceType, value, multiplier);
             rewriter.replaceOpWithNewOp<arith::FPToSIOp>(op, convertedTargetType, value);
+            return success();
+         } else if (auto bfloatType = mlir::dyn_cast_or_null<BFloat16Type>(scalarTargetType)) {
+            value = rewriter.replaceOpWithNewOp<arith::TruncFOp>(op, convertedTargetType, value);
+            return success();
+         // This case only happens if the source type is bfloat
+         } else if (auto floatType = mlir::dyn_cast_or_null<FloatType>(scalarTargetType)) {
+            value = rewriter.replaceOpWithNewOp<arith::ExtFOp>(op, convertedTargetType, value);
             return success();
          }
       } else if (auto decimalSourceType = mlir::dyn_cast_or_null<db::DecimalType>(scalarSourceType)) {
@@ -889,7 +900,7 @@ class CastOpLowering : public OpConversionPattern<db::CastOp> {
                rewriter.replaceOpWithNewOp<arith::DivSIOp>(op, convertedTargetType, value, multiplier);
             }
             return success();
-         } else if (mlir::isa<FloatType>(scalarTargetType)) {
+         } else if (mlir::isa<FloatType>(scalarTargetType) || mlir::isa<BFloat16Type>(scalarTargetType)) {
             auto multiplier = rewriter.create<arith::ConstantOp>(loc, convertedTargetType, FloatAttr::get(convertedTargetType, powf(10, decimalSourceType.getS())));
             value = rewriter.create<arith::SIToFPOp>(loc, convertedTargetType, value);
             rewriter.replaceOpWithNewOp<arith::DivFOp>(op, convertedTargetType, value, multiplier);

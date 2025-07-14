@@ -15,6 +15,7 @@ struct StringRuntime {
    static int64_t toInt(VarLen32 str);
    static int64_t len(VarLen32 str);
    static size_t nextChar(VarLen32 str, size_t position);
+   static __bf16 toBfloat(VarLen32 str);
    static float toFloat32(VarLen32 str);
    static double toFloat64(VarLen32 str);
    static __int128 toDecimal(VarLen32 str, int32_t reqScale);
@@ -25,6 +26,7 @@ struct StringRuntime {
    static VarLen32 fromTimestamp(int64_t);
    static VarLen32 fromBool(bool);
    static VarLen32 fromInt(int64_t);
+   static VarLen32 fromBfloat(__bf16);
    static VarLen32 fromFloat32(float);
    static VarLen32 fromFloat64(double);
    static VarLen32 fromChar(uint32_t);

@@ -135,6 +135,8 @@ std::shared_ptr<arrow::DataType> toPhysicalType(lingodb::catalog::Type t) {
             default:
                throw std::runtime_error("unsupported bit width");
          }
+      case TypeId::BFLOAT:
+         return arrow::float16();
       case TypeId::FLOAT:
          return arrow::float32();
       case TypeId::DOUBLE:

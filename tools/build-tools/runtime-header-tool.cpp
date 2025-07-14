@@ -80,6 +80,7 @@ class MethodPrinter : public MatchFinder::MatchCallback {
       if (const auto* bt = dyn_cast<BuiltinType>(canonicalType)) {
          switch (bt->getKind()) {
             case clang::BuiltinType::Bool: return translateIntegerType(1);
+            case clang::BuiltinType::BFloat16: return "mlir::BFloat16Type::get(context)";
             case clang::BuiltinType::Float: return "mlir::Float32Type::get(context)";
             case clang::BuiltinType::Double: return "mlir::Float64Type::get(context)";
 

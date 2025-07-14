@@ -17,6 +17,7 @@ class MLIRTypeCreator {
 };
 std::shared_ptr<MLIRTypeCreator> createBoolTypeCreator();
 std::shared_ptr<MLIRTypeCreator> createIntTypeCreator(std::shared_ptr<catalog::IntTypeInfo> info);
+std::shared_ptr<MLIRTypeCreator> createBFloatTypeCreator();
 std::shared_ptr<MLIRTypeCreator> createFloatTypeCreator();
 std::shared_ptr<MLIRTypeCreator> createDoubleTypeCreator();
 std::shared_ptr<MLIRTypeCreator> createDecimalTypeCreator(std::shared_ptr<catalog::DecimalTypeInfo> info);

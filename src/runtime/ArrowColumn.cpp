@@ -40,6 +40,8 @@ std::shared_ptr<arrow::DataType> createType(std::string name, uint32_t p1, uint3
          case 32: return arrow::uint32();
          case 64: return arrow::uint64();
       }
+   } else if (name == "bfloat") {
+      return arrow::float16();
    } else if (name == "float") {
       switch (p1) {
          case 16: return arrow::float16();

@@ -6,6 +6,7 @@
 #include <arrow/table.h>
 
 #include "lingodb/execution/ResultProcessing.h"
+#include "lingodb/execution/PrettyPrintExtension.h"
 #include "lingodb/runtime/ArrowTable.h"
 #include <functional>
 
@@ -53,7 +54,12 @@ void printTable(const std::shared_ptr<arrow::Table>& table) {
       convertHex.push_back(table->schema()->field(positions.size())->type()->id() == arrow::Type::FIXED_SIZE_BINARY);
       rowSep += std::string(33, '-');
       std::string str;
-      arrow::PrettyPrint(*c.get(), options, &str); //NOLINT (clang-diagnostic-unused-result)
+      if (table->schema()->field(positions.size())->type()->id() != arrow::Type::HALF_FLOAT) {
+         arrow::PrettyPrint(*c.get(), options, &str); //NOLINT (clang-diagnostic-unused-result)
+      } else {
+         lingodb::execution::ExtensionPrinter printer;
+         printer.PrettyPrint(*c.get(), options, &str);
+      } //NOLINT (clang-diagnostic-unused-result)
       columnReps.push_back(str);
       positions.push_back(0);
    }

@@ -84,6 +84,9 @@ std::shared_ptr<MLIRTypeCreator> createBoolTypeCreator() {
 std::shared_ptr<MLIRTypeCreator> createIntTypeCreator(std::shared_ptr<catalog::IntTypeInfo> info) {
    return std::make_shared<IntTypeCreator>(info);
 }
+std::shared_ptr<MLIRTypeCreator> createBFloatTypeCreator() {
+   return std::make_shared<GenericTypeCreator<mlir::BFloat16Type>>();
+}
 std::shared_ptr<MLIRTypeCreator> createFloatTypeCreator() {
    return std::make_shared<GenericTypeCreator<mlir::Float32Type>>();
 }
