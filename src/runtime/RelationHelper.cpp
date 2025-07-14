@@ -56,7 +56,7 @@ void RelationHelper::appendTableFromResult(lingodb::runtime::VarLen32 tableName,
       appendToTable(session, tableName.str(), resultTable.value()->get());
    }
 }
-void RelationHelper::copyFromIntoTable(lingodb::runtime::VarLen32 tableName, lingodb::runtime::VarLen32 fileName, lingodb::runtime::VarLen32 delimiter, lingodb::runtime::VarLen32 escape) {
+void RelationHelper::copyFromIntoTable(lingodb::runtime::VarLen32 tableName, lingodb::runtime::VarLen32 fileName, lingodb::runtime::VarLen32 delimiter, lingodb::runtime::VarLen32 escape, bool header) {
    auto* context = getCurrentExecutionContext();
    auto& session = context->getSession();
    auto catalog = session.getCatalog();
@@ -81,6 +81,9 @@ void RelationHelper::copyFromIntoTable(lingodb::runtime::VarLen32 tableName, lin
             parseOptions.escaping = true;
             parseOptions.double_quote = false;
          }
+      }
+      if (header) {
+         readOptions.skip_rows = 1;
       }
       parseOptions.newlines_in_values = true;
       auto convertOptions = arrow::csv::ConvertOptions::Defaults();
